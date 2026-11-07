@@ -1,0 +1,83 @@
+/* views-b.css — Opportunities (Funding & PhD) view styles. Uses the shared tokens from app.css only. */
+
+/* Stream chips */
+.opp-chips{display:flex;flex-wrap:wrap;gap:6px}
+.opp-chips .chip,.chip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--white);color:var(--muted);font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap}
+.chip:hover{border-color:var(--accent);color:var(--text)}
+.chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (pointer:coarse){.chip{min-height:40px}}
+
+/* Buttons that read as links (record titles, "show more") */
+.linklike{appearance:none;border:0;background:none;padding:0;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer;letter-spacing:inherit}
+.linklike:hover{color:var(--accent-strong);text-decoration:underline;text-underline-offset:3px}
+body[data-theme=dark] .linklike:hover{color:#a9c3f0}
+h3 .linklike,h2 .linklike{font-weight:800}
+
+/* Cards */
+.opp-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--min,320px),1fr));gap:var(--gap)}
+.opp-card{display:flex;flex-direction:column;gap:8px}
+.opp-card-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.opp-card h3{font-size:15px;line-height:1.3;margin:2px 0 0}
+.opp-badges{display:flex;flex-wrap:wrap;gap:6px}
+.opp-links{display:inline-flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.opp-links .sep{color:var(--subtle)}
+.opp-card .opp-links{margin-top:auto;padding-top:6px;border-top:1px solid var(--border)}
+
+/* Key/value lists (deadline, cost, funding, eligibility …) */
+dl.kv{display:grid;grid-template-columns:minmax(110px,max-content) minmax(0,1fr);gap:6px 14px;margin:0}
+dl.kv dt{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:800;padding-top:3px}
+dl.kv dd{margin:0;font-size:12.5px;line-height:1.5;overflow-wrap:anywhere;min-width:0}
+dl.kv.compact{grid-template-columns:minmax(92px,max-content) minmax(0,1fr);gap:4px 12px}
+@media (max-width:520px){dl.kv,dl.kv.compact{grid-template-columns:minmax(0,1fr);gap:2px}dl.kv dd{margin-bottom:6px}}
+
+/* Score pill + breakdown */
+.score-bd{border:0}
+.score-bd>summary{display:inline-flex;align-items:center;gap:8px;cursor:pointer;list-style:none;user-select:none}
+.score-bd>summary::-webkit-details-marker{display:none}
+.score-bd>summary::after{content:'▾';font-size:10px;color:var(--muted);transition:transform .15s}
+.score-bd[open]>summary::after{transform:rotate(180deg)}
+.score-pill{display:inline-grid;place-items:center;min-width:44px;height:28px;padding:0 9px;border-radius:9px;background:var(--badge-blue-bg);color:var(--badge-blue);font-weight:800;font-size:14px;letter-spacing:-.03em}
+.score-pill.unranked{background:var(--surface2);color:var(--muted);font-size:11px;font-weight:700;letter-spacing:0}
+.bd-list{list-style:none;margin:8px 0 0;padding:10px 12px;border-radius:12px;background:var(--surface2);display:grid;gap:4px;font-size:12px}
+.bd-list li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;min-width:0}
+.bd-list li>*{min-width:0;overflow-wrap:anywhere}
+.plain-list li{min-width:0;overflow-wrap:anywhere}
+.bd-label{color:var(--muted)}
+
+/* Layout: filters, split panes, lower grid */
+.opp-filters>summary{display:flex;align-items:center;gap:8px;padding:14px 20px;cursor:pointer;font-weight:800;list-style:none}
+.opp-filters>summary::-webkit-details-marker{display:none}
+.opp-filters>summary::before{content:'▸';color:var(--muted);transition:transform .15s}
+.opp-filters[open]>summary::before{transform:rotate(90deg)}
+.opp-filter-grid{padding-top:0}
+.check-field{flex-direction:row;align-items:center;gap:8px}
+.check-field input{width:auto;min-height:0}
+.main-pane,.side-pane{min-width:0}
+.detail-pane{position:sticky;top:0;max-height:calc(100dvh - var(--top-h) - 2*var(--pad));overflow:auto}
+@media (max-width:1199px){.detail-pane{position:static;max-height:none}}
+.opp-lower{align-items:start}
+@media (max-width:900px){.opp-lower{grid-template-columns:minmax(0,1fr)}}
+.opp-detail .detail-title{font-size:18px;letter-spacing:-.04em;margin:0}
+
+/* Board (personal stages) */
+.opp-board{grid-auto-columns:minmax(250px,1fr)}
+.board-move{display:flex;align-items:center;gap:6px;margin-top:8px}
+.board-move select{min-height:30px;padding:3px 8px;font-size:12px}
+.empty-col{padding:6px 4px}
+
+/* Table (wide screens) */
+.opp-table td .linklike{font-weight:700}
+.nowrap{white-space:nowrap}
+
+/* Weights */
+.weight-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(0,2fr) 52px;align-items:center;gap:10px;font-size:12px}
+.weight-row input[type=range]{width:100%;accent-color:var(--accent)}
+@media (max-width:520px){.weight-row{grid-template-columns:minmax(0,1fr) 52px}.weight-row input[type=range]{grid-column:1/-1;order:3}}
+
+/* PhD & publications */
+.phd-split{align-items:start}
+.plain-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.plain-list.bullets{list-style:disc;padding-left:18px}
+.pub-history{margin:6px 0 0;padding-left:18px;display:grid;gap:2px}
+.text-amber{color:var(--badge-amber)}
+strong.d{font-weight:800}
