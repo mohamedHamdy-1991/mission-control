@@ -4,6 +4,7 @@
   'use strict';
   const MC = (window.MC = window.MC || {});
   const { esc: L, attr: A } = MC.sanitize;
+  const esc = L, attr = A;   // same helpers under their plain names (new components use these)
   const DAY = 86400000;
 
   const KIND_BADGE = { routine: ['Routine', 'blue'], 'snapshot-task': ['ChatGPT snapshot', 'amber'], task: ['Task', 'purple'] };
@@ -178,6 +179,94 @@
       '<span><b>Synthetic demo workspace.</b> Every agent, task, run and deadline on this page is fictional demo content — nothing here is real or synced. Connect your private data repository in <button class="link-btn" data-action="nav" data-view="settings">Settings</button> to see your actual workspace.</span></div>';
   }
 
+  /* ---------- instrument band: today's schedule ticks + deadline pins over a 14-day run sparkline ---------- */
+  function dayStrip(m) {
+    const F = MC.fmt, today = F.today();
+    const ticks = [];           // {h, minute, label, onclickKey}
+    const pins = [];
+    for (const it of m.items) {
+      if (it.archived || !it.schedule || it.schedule.enabled === false) continue;
+      const occ = MC.schedule.occurrences(it, today, today) || [];
+      for (const o of occ) {
+        if (!o.time) continue;
+        const [h, mi] = o.time.split(':').map(Number);
+        ticks.push({ at: h + mi / 60, label: it.title, key: it.key });
+      }
+    }
+    for (const o of m.opportunities) {
+      if (o.archived || !o.deadline) continue;
+      const d = F.daysUntil(o.deadline);
+      if (d === 0) pins.push({ label: o.title, key: o.key, red: true });
+    }
+    for (const r of m.reminders || []) {
+      if (r.date !== today) continue;
+      const h = r.time ? Number(r.time.split(':')[0]) + Number(r.time.split(':')[1]) / 60 : 12;
+      ticks.push({ at: h, label: r.title, key: 'rem', amber: true });
+    }
+    // 14-day run sparkline (bars)
+    const days = [];
+    for (let i = 13; i >= 0; i--) days.push(F.addDays(today, -i));
+    const per = Object.fromEntries(days.map((d) => [d, 0]));
+    for (const run of m.runs) {
+      const k = F.dayKey(run.finishedAt || run.startedAt || '');
+      if (k && k in per) per[k] += 1;
+    }
+    const max = Math.max(1, ...Object.values(per));
+    const spark = days.map((d) => {
+      const n = per[d];
+      const h = Math.round((n / max) * 100);
+      return '<span class="spark-bar' + (d === today ? ' today' : '') + (n ? '' : ' zero') + '" style="height:' + Math.max(6, h) + '%" title="' + esc(F.dateShort(d) + ' · ' + n + ' run(s)') + '"></span>';
+    }).join('');
+    const hours = [0, 3, 6, 9, 12, 15, 18, 21, 24];
+    const marks = hours.map((h) => '<span class="band-hour" style="left:' + ((h / 24) * 100) + '%">' + String(h).padStart(2, '0') + '</span>').join('');
+    const tickHtml = ticks.map((t) => '<span class="band-tick' + (t.amber ? ' amber' : '') + '" style="left:' + Math.min(99.6, (t.at / 24) * 100) + '%" title="' + esc(t.label + ' · ' + Math.floor(t.at) + ':' + String(Math.round((t.at % 1) * 60)).padStart(2, '0')) + '"></span>').join('');
+    const pinHtml = pins.map((p) => '<button class="band-pin" data-action="route" data-route="opportunities/funding/' + attr(encodeURIComponent(p.key)) + '" title="' + attr('Deadline today · ' + p.label) + '">' + MC.icon('flag') + '</button>').join('');
+    const now = new Date();
+    const nowAt = MC.fmt.hm(now) ? (Number(String(MC.fmt.hm(now)).slice(0, 2)) + Number(String(MC.fmt.hm(now)).slice(3, 5)) / 60) : 12;
+    return '<section class="panel band">' +
+      '<div class="panel-head"><div><p class="panel-kicker">Today · Europe/London</p>' +
+      '<h2 class="panel-title">' + esc(F.weekday(today)) + ' ' + esc(F.dateShort(today)) + ' <span class="small muted">' + esc(F.zoneAbbr(now)) + '</span></h2></div>' +
+      '<div class="panel-actions"><span class="badge blue">' + ticks.length + ' scheduled tick(s)</span>' +
+      (pins.length ? '<span class="badge red">' + pins.length + ' due today</span>' : '<span class="badge">No deadline today</span>') + '</div></div>' +
+      '<div class="section-pad">' +
+        '<div class="band-track" role="img" aria-label="Schedule across the day">' + marks + tickHtml +
+          '<span class="band-now" style="left:' + ((nowAt / 24) * 100) + '%"></span>' + '</div>' +
+        (pins.length ? '<div class="band-pins">' + pinHtml + '</div>' : '') +
+        '<div class="band-foot"><div class="spark-wrap"><span class="panel-kicker">Runs · last 14 days</span>' +
+          '<div class="spark">' + spark + '</div></div>' +
+          '<div class="band-legend"><span><i class="lg-tick"></i> scheduled</span><span><i class="lg-now"></i> now</span><span><i class="lg-pin"></i> deadline</span></div>' +
+        '</div>' +
+      '</div></section>';
+  }
+
+  /* ---------- status ring + agent strip ---------- */
+  function statusRing(m) {
+    const counts = MC.state.STATUSES.map((st) => ({ st, n: m.items.filter((i) => !i.archived && i.status === st).length }));
+    const total = counts.reduce((a, c) => a + c.n, 0) || 1;
+    const colors = { queued: '#8caddc', working: '#d2a16c', review: '#b49bcf', completed: '#76b7a9' };
+    let acc = 0;
+    const stops = counts.map((c) => {
+      const from = (acc / total) * 100; acc += c.n; const to = (acc / total) * 100;
+      return colors[c.st] + ' ' + from.toFixed(2) + '% ' + to.toFixed(2) + '%';
+    }).join(',');
+    return '<div class="ring-card"><div class="ring" style="background:conic-gradient(' + stops + ')">' +
+      '<span class="ring-hole"><b>' + total + '</b><span>on the board</span></span></div>' +
+      '<ul class="ring-legend">' + counts.map((c) => '<li><i style="background:' + colors[c.st] + '"></i>' + esc(MC.state.STATUS_LABEL[c.st] || c.st) + '<b>' + c.n + '</b></li>').join('') + '</ul></div>';
+  }
+  function agentStrip(m) {
+    const byAgent = {};
+    for (const r of m.runs) { if (r.agentId) byAgent[r.agentId] = (byAgent[r.agentId] || 0) + 1; }
+    const cards = m.agents.slice(0, 8).map((a) => {
+      const live = byAgent[a.id] || 0;
+      return '<button class="agent-chip" data-action="route" data-route="agents/' + attr(a.id) + '" title="' + attr(a.name + ' · ' + (a.title || '')) + '">' +
+        MC.app.avatar(a, 'md') + '<span class="agent-chip-txt"><b>' + esc(a.name) + '</b><span class="small muted">' + esc((a.title || '').slice(0, 26)) + '</span></span>' +
+        '<span class="agent-chip-n">' + live + '<i>runs</i></span></button>';
+    }).join('');
+    return '<section class="panel"><div class="panel-head"><div><p class="panel-kicker">Roster</p><h2 class="panel-title">Agents at a glance</h2></div>' +
+      '<div class="panel-actions"><button class="btn small" data-action="nav" data-view="agents">All agents</button></div></div>' +
+      '<div class="section-pad"><div class="agent-strip">' + cards + '</div></div></section>';
+  }
+
   function render(el, ctx) {
     const m = ctx.model || MC.state.get();
     const mm = metrics(m);
@@ -185,9 +274,13 @@
     el.innerHTML = '<div class="view-inner">' +
       demoBanner(MC.state.mode()) +
       '<div class="metrics-row">' + mm.html + '</div>' +
+      dayStrip(m) +
       flagsPanel(m) +
-      flowBoard(m, ctx) +
-      '<div class="split ov-split">' + latestRuns(mm.recent, m) + deadlines(mm.dated, m, countOverdue(m)) + '</div>' +
+      '<div class="ov-cols">' +
+        '<div class="stack">' + flowBoard(m, ctx) + '</div>' +
+        '<div class="stack">' + statusRing(m) + deadlines(mm.dated, m, countOverdue(m)) + agentStrip(m) + '</div>' +
+      '</div>' +
+      latestRuns(mm.recent, m) +
       '</div>';
   }
   function countOverdue(m) {
