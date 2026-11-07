@@ -213,8 +213,63 @@
   window.addEventListener('online', () => { if (unsaved.length && TOKEN) retryUnsaved(); });
   window.addEventListener('offline', () => { if (cfg.mode !== 'demo') setStatus('offline', 'Offline — edits will not be saved until you reconnect.'); });
 
+  /**
+   * Diagnostic used by Settings › Test connection. Runs the same authenticated GETs the loader uses,
+   * one at a time, and reports the exact step that fails. Never touches storage; the token stays in memory.
+   * opts: {mode, owner, repo, branch, token} — same shape as connect(), but nothing is committed on failure.
+   */
+  async function diagnose(opts) {
+    const steps = [];
+    const prev = { cfg, token: TOKEN };
+    try {
+      const mode = opts.mode === 'local' ? 'local' : 'github';
+      const apiBase = resolveBase(mode);
+      const owner = mode === 'local' ? 'local' : String(opts.owner || '').trim();
+      const repo = mode === 'local' ? 'private' : String(opts.repo || '').trim();
+      const branch = String(opts.branch || 'main').trim();
+      const tok = String(opts.token || '').trim();
+      steps.push(['Token present', !!tok && tok.length >= 20 && !/\s/.test(tok), tok ? 'shape ok (' + tok.length + ' chars)' : 'no token typed']);
+      if (!steps[steps.length - 1][1]) return { ok: false, steps };
+      cfg = { mode, apiBase, owner, repo, branch }; TOKEN = tok;
+      // 1. who is this token?
+      try {
+        const r = await fetch(GITHUB_API + '/user', { cache: 'no-store', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + TOKEN } });
+        const j = r.ok ? await r.json() : {};
+        steps.push(['Token recognised by GitHub', r.ok, r.ok ? ('signed in as ' + (j.login || '?')) : ('HTTP ' + r.status)]);
+        if (!r.ok) return { ok: false, steps, code: 'auth' };
+      } catch (e) { steps.push(['Token recognised by GitHub', false, 'network blocked: ' + e.message]); return { ok: false, steps, code: 'offline' }; }
+      // 2. does this token see the repository, and can it write?
+      try {
+        const r = await fetch(GITHUB_API + '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo), { cache: 'no-store', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + TOKEN } });
+        const j = r.ok ? await r.json() : {};
+        const perms = j.permissions || {};
+        steps.push(['Repository readable', r.ok, r.ok ? (owner + '/' + repo + (j.private ? ' (private)' : ' (PUBLIC — wrong repo?)')) : ('HTTP ' + r.status + (r.status === 404 ? ' — token not scoped to this repo' : ''))]);
+        if (!r.ok) return { ok: false, steps, code: 'notfound' };
+        steps.push(['Contents: read permission', j.permissions ? perms.pull === true : 'unknown', j.permissions ? ('pull=' + perms.pull) : 'not reported by GitHub for this token type']);
+        steps.push(['Contents: read/write permission', j.permissions ? perms.push === true : 'unknown', j.permissions ? ('push=' + perms.push) : 'not reported by GitHub for this token type']);
+        if (j.permissions && perms.push !== true) steps.push(['NOTE', false, 'Read-only token: the dashboard will load but cannot save edits']);
+      } catch (e) { steps.push(['Repository readable', false, 'network error: ' + e.message]); return { ok: false, steps, code: 'offline' }; }
+      // 3. is the data index there and does it list files?
+      try {
+        const r = await fetch(GITHUB_API + '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo) + '/contents/feeds/meta/feeds-index.json?ref=' + encodeURIComponent(branch),
+          { cache: 'no-store', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + TOKEN } });
+        if (!r.ok) { steps.push(['Data index present (branch ' + branch + ')', false, 'HTTP ' + r.status]); return { ok: false, steps, code: r.status === 404 ? 'notfound' : 'http' }; }
+        const j = await r.json();
+        const txt = atob(String(j.content || '').replace(/\s/g, ''));
+        let idx = null; try { idx = JSON.parse(new TextDecoder().decode(Uint8Array.from(txt, (c) => c.charCodeAt(0)))); } catch (e) { steps.push(['Data index parses', false, 'not valid JSON']); return { ok: false, steps }; }
+        const files = (idx.files || []).filter((f) => ['feed', 'meta', 'user', 'receipt'].includes(f.kind));
+        steps.push(['Data index present (branch ' + branch + ')', true, files.length + ' loadable files listed']);
+        const agentFeed = files.some((f) => f.path === 'feeds/mausbot/agents.json');
+        steps.push(['MausBot agent feed listed', agentFeed, agentFeed ? 'feeds/mausbot/agents.json' : 'missing — run the sync agent once']);
+      } catch (e) { steps.push(['Data index present (branch ' + branch + ')', false, 'network error: ' + e.message]); return { ok: false, steps, code: 'offline' }; }
+      return { ok: steps.every((s) => s[1] !== false || s[0] === 'NOTE'), steps };
+    } finally {
+      cfg = prev.cfg; TOKEN = prev.token;
+    }
+  }
+
   MC.data = {
-    GITHUB_API,
+    GITHUB_API, diagnose,
     status: () => Object.assign({}, status, { unsaved: unsaved.length }),
     onStatus(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     config: () => Object.assign({}, cfg, { hasToken: !!TOKEN }),

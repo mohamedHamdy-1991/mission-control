@@ -113,7 +113,19 @@
       console.error(e);
       el.innerHTML = '<div class="view-inner"><div class="notice error">This view failed to render: ' + esc(e.message) + '</div></div>';
     }
-    hydratePortraits(el);
+  hydratePortraits(el);
+    // Demo state must explain itself: the page always boots synthetic and only shows real data after Connect.
+    if (MC.state.mode() === 'demo' && route.view !== 'settings' && route.view !== 'overview') {
+      const banner = document.createElement('div');
+      banner.className = 'view-inner';
+      banner.style.marginBottom = '12px';
+      banner.innerHTML = '<div class="notice info" role="note"><b>Demo workspace — not connected.</b> ' +
+        'These are sample agents, not your MausBot ones. Your real data (agents, routines, runs, opportunities, reports) ' +
+        'stays in your private repository until you connect it with your own token. ' +
+        '<button class="btn small primary" data-action="nav" data-view="settings" style="margin-left:8px">Connect in Settings</button> ' +
+        'Use <b>Test connection</b> there to see exactly which step fails.</div>';
+      el.insertBefore(banner, el.firstChild);
+    }
     el.scrollTop = keepScroll;
     if (focusId) { const f = document.getElementById(focusId); if (f) f.focus({ preventScroll: true }); }
   }

@@ -63,9 +63,11 @@
       '<div class="section-pad"><div class="stack">' + seg + form +
       '<div class="row wrap">' +
       '<button class="btn primary" data-action="st-connect">' + MC.icon('key') + 'Connect</button>' +
+      '<button class="btn" data-action="st-test">' + MC.icon('search') + 'Test connection</button>' +
       '<button class="btn" data-action="refresh">Refresh data</button>' +
       '<button class="btn danger" data-action="st-lock">' + MC.icon('x') + 'Lock &amp; clear memory</button></div>' +
       '<p class="small muted" id="st-error" role="alert"></p>' +
+      '<div id="st-diag" class="stack" aria-live="polite"></div>' +
       '<div class="notice info"><b>Token guidance.</b> Create a <b>fine-grained, expiring</b> personal access token scoped to the data repository <b>only</b>, with <b>Contents: read and write</b> and nothing else. The token is typed by you into this page, held in this tab’s memory only, and is never stored, logged, exported or sent anywhere except <code>api.github.com</code>. Locking the app clears it. Nobody can recover it from a backup — backups never contain tokens.</div>' +
       (local ? '' : '<p class="small subtle">“Local preview server” is only offered on a 127.0.0.1/localhost origin; this page is served from “' + L(location.hostname || 'this origin') + '”.</p>') +
       '</div></div></div>';
@@ -196,6 +198,34 @@
       say(why);
       MC.app.toast('Connection failed.', { error: true });
     });
+  });
+  MC.actions.register('st-test', () => {
+    const say = (msg) => { const err = document.getElementById('st-error'); if (err) err.textContent = msg; };
+    const box = document.getElementById('st-diag');
+    const token = (document.getElementById('st-token') || {}).value || '';
+    const opts = { mode, token };
+    if (mode === 'github') {
+      opts.owner = (document.getElementById('st-owner') || {}).value || '';
+      opts.repo = (document.getElementById('st-repo') || {}).value || '';
+      opts.branch = (document.getElementById('st-branch') || {}).value || 'main';
+    }
+    if (box) box.innerHTML = '<p class="small muted">Testing…</p>';
+    say('');
+    MC.data.diagnose(opts).then((r) => {
+      if (!box) return;
+      const rows = r.steps.map((s) => {
+        const [label, ok, detail] = s;
+        const cls = ok === true ? 'green' : ok === false ? 'red' : 'amber';
+        const word = ok === true ? 'pass' : ok === false ? 'fail' : 'note';
+        return '<li><span class="badge ' + cls + '">' + word + '</span> <b>' + L(label) + '</b> <span class="small muted">' + L(detail || '') + '</span></li>';
+      }).join('');
+      box.innerHTML = '<div class="panel"><div class="panel-head"><div><p class="panel-kicker">Diagnostic</p><h2 class="panel-title">' +
+        (r.ok ? 'Connection ready — press Connect' : 'Connection blocked') + '</h2></div></div>' +
+        '<div class="section-pad"><ul class="plain-list">' + rows + '</ul>' +
+        (r.ok ? '<p class="small muted">Everything the dashboard needs is reachable. Press <b>Connect</b> to load your agents, routines and runs.</p>'
+              : '<p class="small muted">Fix the first failing row above, then test again. Nothing has been saved or sent anywhere but api.github.com.</p>') +
+        '</div></div>';
+    }).catch((e) => { if (box) box.innerHTML = '<p class="small muted">Diagnostic failed: ' + L(e.message) + '</p>'; });
   });
   MC.actions.register('st-lock', (el, ev) => {
     MC.app.confirm('Lock now? The token and every private byte in this tab are cleared and the synthetic demo workspace is shown. Unsaved changes are discarded.', 'Lock & clear').then((ok) => {
