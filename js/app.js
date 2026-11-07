@@ -42,29 +42,44 @@
 
   /* ---------- shell ---------- */
   function shell() {
-    const navBtn = (n, cls) => '<button class="' + cls + '" data-action="nav" data-view="' + n.id + '" title="' + attr(n.label) + '" aria-label="' + attr(n.label) + '">' + I(n.icon) + '<span class="rail-label">' + esc(n.label) + '</span></button>';
-    const fsBtn = document.fullscreenEnabled
-      ? '<button class="rail-btn" data-action="fullscreen" title="Full screen (F)" aria-label="Toggle full screen">' + I('maximize') + '<span class="rail-label">Full screen</span></button>' : '';
+    const navBtn = (n) => '<button class="rail-btn" data-action="nav" data-view="' + n.id + '" title="' + attr(n.label) + '" aria-label="' + attr(n.label) + '">' + I(n.icon) + '<span class="rail-label">' + esc(n.label) + '</span></button>';
+    const topNav = NAV.filter((n) => n.id !== 'settings')
+      .map((n) => '<button data-action="nav" data-view="' + n.id + '">' + esc(n.id === 'opportunities' ? 'Opportunities' : n.label) + '</button>').join('');
     document.getElementById('app').innerHTML =
-      '<div class="app">' +
-        '<aside class="rail" aria-label="Main navigation">' +
-          '<div class="brand"><div class="brand-mark">' + I('layers') + '</div><div class="brand-text"><b>Mission Control</b><span>Agent journeys</span></div></div>' +
-          '<nav class="rail-nav">' + NAV.map((n) => navBtn(n, 'rail-btn')).join('') + '</nav>' +
-          '<div class="rail-bottom">' + fsBtn +
-            '<button class="rail-btn" data-action="toggle-theme" title="Light / dark" aria-label="Toggle light or dark theme">' + I('moon') + '<span class="rail-label">Theme</span></button>' +
-          '</div>' +
-        '</aside>' +
-        '<div class="main">' +
-          '<header class="topbar">' +
-            '<div class="topbar-title"><div class="eyebrow" id="page-eyebrow"></div><h1 class="page-title" id="page-title">Mission Control</h1></div>' +
-            '<div class="top-actions">' +
+      '<div class="frame">' +
+        '<div class="browser" aria-hidden="true">' +
+          '<span class="traffic"><i></i><i></i><i></i></span>' +
+          '<span class="browser-actions">' + I('chevron-left') + I('chevron-right') + '</span>' +
+          '<span class="browser-title">Mission Control · Agent Journeys</span>' +
+          '<span class="browser-end">' + I('refresh') + I('share') + '</span>' +
+        '</div>' +
+        '<div class="app">' +
+          '<header class="app-head">' +
+            '<div class="brand"><div class="brand-mark">' + I('layers') + '</div>' +
+              '<div class="brand-text"><b>Mission Control</b><span>Agent Journeys</span></div></div>' +
+            '<nav class="top-nav" aria-label="Views">' + topNav + '</nav>' +
+            '<div class="head-actions">' +
               '<button class="sync-chip" id="sync-chip" data-action="nav" data-view="settings" title="Data status"><span class="dot"></span><span class="label" id="sync-label">Demo</span></button>' +
-              '<button class="icon-btn" data-action="refresh" title="Refresh data" aria-label="Refresh data">' + I('refresh') + '</button>' +
-              '<button class="icon-btn" data-action="open-search" title="Search (/)" aria-label="Search">' + I('search') + '</button>' +
-              (document.fullscreenEnabled ? '<button class="icon-btn hide-sm" data-action="fullscreen" title="Full screen (F)" aria-label="Toggle full screen" id="fs-top">' + I('maximize') + '</button>' : '') +
+              '<button class="round-btn" data-action="open-search" title="Search (/)" aria-label="Search">' + I('search') + '</button>' +
+              '<button class="round-btn" data-action="refresh" title="Refresh data" aria-label="Refresh data">' + I('refresh') + '</button>' +
+              (document.fullscreenEnabled ? '<button class="round-btn" data-action="fullscreen" title="Full screen (F)" aria-label="Full screen" id="fs-top">' + I('maximize') + '</button>' : '') +
             '</div>' +
           '</header>' +
-          '<main class="view" id="view" tabindex="-1"></main>' +
+          '<div class="layout">' +
+            '<aside class="rail" aria-label="Main navigation">' +
+              '<nav class="rail-nav">' + NAV.map(navBtn).join('') + '</nav>' +
+              '<div class="rail-bottom">' +
+                '<button class="rail-btn" data-action="toggle-theme" title="Light / dark" aria-label="Toggle theme">' + I('moon') + '<span class="rail-label">Theme</span></button>' +
+                (document.fullscreenEnabled ? '<button class="rail-btn" data-action="fullscreen" title="Full screen (F)" aria-label="Full screen">' + I('maximize') + '<span class="rail-label">Full screen</span></button>' : '') +
+              '</div>' +
+            '</aside>' +
+            '<div class="viewport">' +
+              '<div class="page-top">' +
+                '<div><div class="eyebrow" id="page-eyebrow"></div><h1 class="page-title" id="page-title">Mission Control</h1></div>' +
+              '</div>' +
+              '<main class="view" id="view" tabindex="-1"></main>' +
+            '</div>' +
+          '</div>' +
           '<nav class="tabbar" aria-label="Primary">' +
             TABS.map((id) => { const n = NAV.find((x) => x.id === id); return '<button class="tab-btn" data-action="nav" data-view="' + id + '" aria-label="' + attr(n.label) + '">' + I(n.icon) + '<span>' + esc(n.label === 'Opportunities' ? 'Opport.' : n.label) + '</span></button>'; }).join('') +
             '<button class="tab-btn" data-action="open-more" aria-label="More">' + I('menu') + '<span>More</span></button>' +
@@ -72,6 +87,10 @@
         '</div>' +
       '</div>';
     mounted = true;
+  }
+  /** Full-screen mode hides the decorative browser frame (the template's shell) and fills the window. */
+  function applyChrome(full) {
+    document.body.classList.toggle('fullbleed', !!full);
   }
   function highlightNav() {
     document.querySelectorAll('[data-action=nav][data-view]').forEach((b) => {
@@ -240,6 +259,7 @@
     if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch((e) => toast('Full screen refused: ' + e.message, { error: true }));
   }
   document.addEventListener('fullscreenchange', () => {
+    applyChrome(!!document.fullscreenElement);
     document.querySelectorAll('[data-action=fullscreen]').forEach((b) => {
       b.innerHTML = I(document.fullscreenElement ? 'minimize' : 'maximize') + (b.classList.contains('rail-btn') ? '<span class="rail-label">' + (document.fullscreenElement ? 'Exit full screen' : 'Full screen') + '</span>' : '');
     });

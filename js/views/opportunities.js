@@ -396,11 +396,12 @@
     const manuscripts = (m.publications || []).map((p) => Object.assign({ origin: 'feed' }, p))
       .concat(manualPubs.map((it) => ({ key: it.key, id: it.id, title: it.title, stage: it.raw.stage, stageDate: it.raw.stageDate || null, venue: it.raw.venue || '', evidence: it.raw.evidence || '', origin: 'manual', history: it.raw.history })));
 
-    const lit = (m.phdReports || []).map((r) =>
+    const lit = (m.phdReports || []).map((r, i) =>
       '<article class="card" id="' + attr(safeDomId(r.key)) + '"><div class="row wrap"><span class="badge purple">Literature</span>' + (r.date ? '<span class="badge">' + esc(F.date(r.date)) + '</span>' : '<span class="badge amber">undated</span>') +
       '<span class="small muted">Provenance: ' + esc(r.provenance || 'not recorded') + '</span></div>' +
       '<h3 style="margin-top:8px">' + esc(r.title) + '</h3>' +
-      '<details' + (openKey === r.key ? ' open' : '') + '><summary class="small">Read digest</summary><div class="prose">' + markdown(r.text) + '</div></details></article>').join('');
+      '<details' + (openKey === r.key || (openKey == null && i === 0) ? ' open' : '') + '><summary class="small">' +
+      (openKey === r.key || (openKey == null && i === 0) ? 'Digest (formatted)' : 'Read digest') + '</summary><div class="prose digest-doc">' + markdown(r.text) + '</div></details></article>').join('');
 
     const manuscriptsHtml = manuscripts.length ? '<div class="grid-auto">' + manuscripts.map((p) => {
       const hist = Array.isArray(p.history) ? p.history.filter((h) => h && h.stage && h.date) : [];

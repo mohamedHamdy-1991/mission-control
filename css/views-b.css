@@ -81,3 +81,15 @@ dl.kv.compact{grid-template-columns:minmax(92px,max-content) minmax(0,1fr);gap:4
 .pub-history{margin:6px 0 0;padding-left:18px;display:grid;gap:2px}
 .text-amber{color:var(--badge-amber)}
 strong.d{font-weight:800}
+
+/* Formatted markdown documents (weekly digests, reports) read like a document, not a log */
+.digest-doc{max-width:74ch;font-size:13.5px;line-height:1.7}
+.digest-doc h2,.digest-doc h3,.digest-doc h4{letter-spacing:-.02em;margin:18px 0 7px;line-height:1.25}
+.digest-doc h2{font-size:17px}.digest-doc h3{font-size:15px}.digest-doc h4{font-size:13.5px;text-transform:none}
+.digest-doc p{margin:0 0 10px}
+.digest-doc ul,.digest-doc ol{margin:0 0 12px;padding-left:22px}
+.digest-doc li{margin:0 0 5px}
+.digest-doc strong{font-weight:800}
+.digest-doc a{text-decoration:underline;text-underline-offset:2px}
+.digest-doc code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:12px}
+.digest-doc hr{border:0;border-top:1px solid var(--border);margin:16px 0}

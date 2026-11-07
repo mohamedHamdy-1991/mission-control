@@ -25,8 +25,9 @@
   const TYPES = {
     schedule: { label: 'Source schedule', short: 'Schedules', cls: 't-schedule', badge: 'blue' },
     plan: { label: 'Dashboard plan', short: 'Plans', cls: 't-plan', badge: 'purple' },
-    deadline: { label: 'Deadline · task date', short: 'Deadlines', cls: 't-deadline', badge: 'red' },
-    run: { label: 'Run history', short: 'Runs', cls: 't-run', badge: 'green' },
+    deadline: { label: 'Opportunity deadline', short: 'Deadlines', cls: 't-deadline', badge: 'red' },
+    taskdate: { label: 'My task date', short: 'Task dates', cls: 't-plan', badge: 'purple' },
+    run: { label: 'Run history (off by default)', short: 'Runs', cls: 't-run', badge: 'green' },
     reminder: { label: 'Reminder', short: 'Reminders', cls: 't-reminder', badge: 'amber' },
   };
   const MODES = [
@@ -46,7 +47,7 @@
     mode: 'month',
     anchor: null, // YYYY-MM-DD the visible range is built around
     selected: null, // day shown in the side pane
-    types: { schedule: true, plan: true, deadline: true, run: true, reminder: true },
+    types: { schedule: true, plan: true, deadline: true, taskdate: true, run: false, reminder: true },
     source: 'all', agent: 'all', stage: 'all', status: 'all', category: 'all',
   };
   let EVT = [];     // events addressable by data-id in the current render (detail modals)
@@ -157,11 +158,11 @@
       const onceDate = kind === 'once' ? (s.date || (s.at ? MC.fmt.dayKey(s.at) : null)) : null;
       if (kind === 'none' || kind === 'interval' || (kind === 'once' && !onceDate)) continue; // not placeable → side list
       if (it.source === 'manual' && kind === 'once') {
-        // one-off manual task date → a dated "deadline · task date" event
+        // one-off manual task date → its own "my task date" type (kept distinct from opportunity deadlines)
         if (onceDate < from || onceDate > to) continue;
         const time = s.at ? MC.fmt.hm(s.at) : s.time;
         const instant = s.at ? s.at : (isTime(time) ? MC.fmt.londonInstant(onceDate, padTime(time)).toISOString() : null);
-        raw.push(mkItemEvent(it, 'deadline', onceDate, time, instant));
+        raw.push(mkItemEvent(it, 'taskdate', onceDate, time, instant));
         continue;
       }
       if (projFrom > to) continue; // wholly-past range → nothing to project
@@ -272,7 +273,7 @@
       const dk = it.deadline ? MC.fmt.dayKey(it.deadline) : (it.schedule && it.schedule.kind === 'once' && it.schedule.date ? it.schedule.date : null);
       if (!dk || dk >= today) continue;
       if ((it.status || '') === 'completed') continue;
-      const e = mkItemEvent(it, 'deadline', dk, it.schedule && it.schedule.time, null);
+      const e = mkItemEvent(it, 'taskdate', dk, it.schedule && it.schedule.time, null);
       e.id = 'od:task:' + it.key;
       out.push({ date: dk, e });
     }
@@ -616,6 +617,16 @@
       if (r && exists) linkBtn = '<button class="btn" data-action="route" data-route="' + A(r) + '">Open linked record</button>';
     }
     const remBtn = e.reminder ? '<button class="btn danger" data-action="cal-reminder-remove" data-id="' + A(e.reminderId) + '">Remove reminder</button>' : '';
+    // Owner control: move a task/routine between columns straight from the calendar, and mark it done.
+    let moveRow = '';
+    if (e.itemKey) {
+      const cur = (e.item && e.item.status) || 'queued';
+      moveRow = fieldRow('Move it myself', '<span class="row wrap" style="gap:6px">' +
+        MC.state.STATUSES.map((st) => '<button class="btn small' + (st === cur ? ' primary' : '') +
+          '" data-action="cal-status" data-key="' + A(e.itemKey) + '" data-status="' + A(st) + '">' +
+          (st === cur ? '✓ ' : '') + L(MC.state.STATUS_LABEL[st]) + '</button>').join('') +
+        '</span><br><span class="small subtle">This sets the board status for this item only; it does not change the agent schedule or run history.</span>');
+    }
 
     MC.app.modal({
       title: t.label + ' · ' + MC.fmt.dateShort(e.date),
@@ -624,7 +635,7 @@
         (e.count > 1 ? '<span class="badge">×' + e.count + ' same-day occurrences</span>' : '') +
         '<span class="badge">' + L(zone) + '</span>' + '</div>' +
         '<h3 class="cal-detail-title">' + L(e.title) + '</h3>' +
-        fieldRow('When', L(when) + whenExtra) + scheduleRow + srcRow + agentRow + statusRow + stageRow + catRow + dlRow + descRow,
+        fieldRow('When', L(when) + whenExtra) + scheduleRow + srcRow + agentRow + statusRow + stageRow + catRow + dlRow + descRow + moveRow,
       foot: remBtn + linkBtn + '<button class="btn" data-action="close-modal">Close</button>',
     });
   }
@@ -734,6 +745,15 @@
     if (!events.length) { MC.app.toast('No events in the visible range match the filters — nothing exported.', { error: true }); return; }
     const res = MC.ics.download(events.map(toIcs), { name: 'Mission Control calendar' });
     MC.app.toast('Exported ' + MC.fmt.plural(res.count, 'event') + ' to ' + res.name + '.');
+  });
+  MC.actions.register('cal-status', (el) => {
+    const key = el.getAttribute('data-key');
+    const status = el.getAttribute('data-status');
+    MC.state.setStatus(key, status).then(() => {
+      MC.app.toast('Moved to ' + (MC.state.STATUS_LABEL[status] || status));
+      MC.app.closeModal();
+      MC.app.render();
+    }).catch((err) => MC.app.toast(err.message || 'Could not move this item', { error: true }));
   });
   MC.actions.register('cal-reminder-remove', (el) => {
     const id = el.getAttribute('data-id');
