@@ -18,6 +18,8 @@
     agents: 'feeds/mausbot/agents.json', routines: 'feeds/mausbot/routines.json', runs: 'feeds/mausbot/runs.json',
     assignments: 'feeds/mausbot/assignments.json', opportunities: 'feeds/radar/opportunities.json', reports: 'feeds/radar/reports.json',
     chatgptTasks: 'feeds/chatgpt/tasks.json', phdReports: 'feeds/phd/weekly-reports.json', publications: 'feeds/phd/publications.json',
+    chatgptOpportunities: 'feeds/chatgpt/opportunities.json', chatgptCorroborations: 'feeds/chatgpt/corroborations.json',
+    chatgptPhdReports: 'feeds/chatgpt/phd-reports.json',
     ledger: 'feeds/meta/ledger.json', manifest: 'feeds/meta/manifest.json', upstreamFlags: 'feeds/meta/upstream-flags.json',
   };
   const STATUSES = ['queued', 'working', 'review', 'completed'];
@@ -94,6 +96,29 @@
     if (s.kind === 'once') return 'Once · ' + (s.at ? F().dateTime(s.at) : s.date ? F().date(s.date) + t : 'date unknown');
     if (s.kind === 'interval') return 'Interval';
     return s.kind;
+  }
+
+  /* ChatGPT schedule text parser: only used for liveStatus==='active' tasks (DATA_CONTRACT §7.3).
+     Parses the verbatim ChatGPT schedule text to weekly/daily + time; anything else → null
+     (the task is listed without projection). */
+  const GPT_DAYS = [
+    [/(\bsun\b|\bsundays?\b)/i, 7], [/(\bmon\b|\bmondays?\b)/i, 1], [/(\btue\b|\btues\b|\btuesdays?\b)/i, 2],
+    [/(\bwed\b|\bwednesdays?\b)/i, 3], [/(\bthu\b|\bthur\b|\bthurs\b|\bthursdays?\b)/i, 4],
+    [/(\bfri\b|\bfridays?\b)/i, 5], [/(\bsat\b|\bsaturdays?\b)/i, 6],
+  ];
+  function parseChatgptScheduleText(text) {
+    if (!text || typeof text !== 'string') return null;
+    const timeMatch = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+    if (!timeMatch) return null;
+    const time = timeMatch[0].length === 4 ? '0' + timeMatch[0] : timeMatch[0];
+    const daily = /\bdaily\b|\bevery\s+day\b|\bevery\s+morning\b|\bevery\s+evening\b|\bevery\s+night\b/i.test(text);
+    const days = [];
+    for (const [rx, n] of GPT_DAYS) if (rx.test(text) && !days.includes(n)) days.push(n);
+    days.sort((a, b) => a - b);
+    if (daily && days.length) return null; // ambiguous text — do not project
+    if (daily) return { kind: 'daily', days: [], time };
+    if (days.length) return { kind: 'weekly', days, time };
+    return null;
   }
 
   /* ---------- store ---------- */
@@ -225,15 +250,32 @@
       });
     }
     for (const t of gptRaw) {
-      const sched = normSchedule({ scheduleType: t.scheduleType, days: t.days, time: t.time, date: t.date }, 'template');
-      sched.origin = 'snapshot'; sched.enabled = t.enabled !== false;
-      sched.label = scheduleLabel(sched) + ' · snapshot (unverified)';
+      // Registry contract (DATA_CONTRACT §7.4): liveStatus active|paused|unverified, route
+      // github-inbox|notion-bridge|manual-import|blocked, scheduleSource = verbatim ChatGPT text.
+      const live = t.liveStatus || 'unverified';
+      const isLive = live === 'active' || live === 'paused';
+      const gptSched = parseChatgptScheduleText(t.scheduleSource && t.scheduleSource.text);
+      let sched;
+      if (isLive && gptSched) {
+        sched = gptSched; sched.origin = 'source'; sched.enabled = live === 'active';
+        sched.tzNote = 'ChatGPT schedule text: "' + (t.scheduleSource.text || '') + '" (Europe/London; verified ' + (t.scheduleSource.verifiedAt || 'not recorded') + ').';
+        sched.label = scheduleLabel(sched) + (live === 'active' ? ' · ChatGPT source schedule' : ' · ChatGPT schedule (task paused)');
+      } else {
+        sched = normSchedule({ scheduleType: t.scheduleType, days: t.days, time: t.time, date: t.date }, 'template');
+        sched.origin = 'snapshot'; sched.enabled = false; // old snapshot projections are never shown as live
+        sched.label = scheduleLabel(sched) + (isLive ? ' · ChatGPT task (schedule text not parseable — listed, not projected)' : ' · snapshot (unverified, not projected)');
+      }
       pushItem({
-        key: 'chatgpt:task:' + t.id, id: t.id, source: 'chatgpt', kind: 'snapshot-task', origin: 'source',
-        title: t.title, description: t.description || t.prompt || '', agentId: null, assignedLabel: 'ChatGPT scheduled task (snapshot)',
+        key: 'chatgpt:task:' + (t.taskId || t.id), id: t.taskId || t.id, source: 'chatgpt', kind: isLive ? 'chatgpt-task' : 'snapshot-task', origin: 'source',
+        title: t.title, description: t.description || t.prompt || '', agentId: null,
+        assignedLabel: isLive ? 'ChatGPT scheduled task (live)' : 'ChatGPT scheduled task (snapshot)',
         category: t.category || 'Research', status: t.status || 'queued', priority: t.priority || 'normal', schedule: sched, enabled: sched.enabled,
         deadline: null, tags: t.tags || [], link: '', prompt: t.prompt || '', deliverable: t.deliverable || '',
-        confirmation: t.confirmation || 'historical-snapshot', liveVerification: t.liveVerification || 'pending', sourceRef: 'Saved ChatGPT task snapshot · ' + t.id, raw: t,
+        liveStatus: live, route: t.route || 'blocked', routeLabel: t.routeLabel || '',
+        lastVerifiedRun: t.lastVerifiedRun || null, scheduleSource: t.scheduleSource || null,
+        confirmation: isLive ? 'live-verified' : (t.confirmation || 'historical-snapshot'),
+        liveVerification: isLive ? 'verified ' + (t.scheduleSource && t.scheduleSource.verifiedAt || '') : (t.liveVerification || 'pending'),
+        sourceRef: isLive ? ('ChatGPT Scheduled page · ' + (t.taskId || t.id)) : 'Saved ChatGPT task snapshot · ' + (t.templateId || t.id), raw: t,
       });
     }
     for (const t of user.manualTasks.tasks || []) {
@@ -267,6 +309,25 @@
         evidence: 'Personal entry — not independently verified',
       }));
     }
+    // ChatGPT scan outputs (feeds/chatgpt/*): distinct from the Radar dataset, never merged into it.
+    const corrobByRadar = {};
+    for (const c of pickArray(feeds.chatgptCorroborations, 'corroborations')) {
+      if (!c || !c.key) continue;
+      (corrobByRadar[c.key] = corrobByRadar[c.key] || []).push(c);
+    }
+    for (const r of oppRaw) {
+      const cs = corrobByRadar['radar:' + r.id];
+      if (cs) { const o = opportunities.find((x) => x.key === 'radar:' + r.id); if (o) o.corroborations = cs; }
+    }
+    for (const o of pickArray(feeds.chatgptOpportunities, 'opportunities')) {
+      const key = o.key || ('chatgpt-opp:' + (o.id || o.url));
+      const st = board.stage && board.stage[key];
+      opportunities.push(Object.assign({}, o, {
+        key, id: o.id || key, source: 'chatgpt', kind: 'opportunity', origin: 'source', stage: (st && st.stage) || 'New',
+        archived: !!(board.archived && board.archived[key]), notes: notes[key] ? notes[key].text : '', overridden: [], flags: [],
+        raw: o, evidence: o.evidence || ('ChatGPT scan run · seen by ' + (o.seenBy || []).map((s) => s.taskId).join(', ')),
+      }));
+    }
 
     const reports = repRaw.map((r, i) => ({
       key: 'radar-report:' + (r.date || r.reportDate || i), idx: i, title: r.title, text: r.text || '', complete: r.complete !== false,
@@ -283,7 +344,12 @@
       key: 'phd:report:' + (r.id || r.date || i), id: r.id || r.date || String(i), title: r.title || ('Weekly Leeds UHI digest ' + (r.date || '')),
       date: r.date || null, text: r.text || r.markdown || '', provenance: provText(r.provenance || r.sourcePath), provenanceDetail: typeof r.provenance === 'object' ? r.provenance : null,
       kind: r.kind || 'literature', raw: r,
-    })).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    })).concat(pickArray(feeds.chatgptPhdReports, 'reports').map((r) => ({
+      key: 'phd:report:' + (r.key || r.id || r.date), id: r.id || r.date || r.key, title: r.title || 'Weekly literature report (ChatGPT)',
+      date: r.date || null, text: r.markdown || r.text || '', provenance: provText(r.provenance),
+      provenanceDetail: typeof r.provenance === 'object' ? r.provenance : null,
+      kind: 'literature', source: 'chatgpt', runStatus: r.runStatus, raw: r,
+    }))).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     const publications = pubRaw.map((p) => Object.assign({ key: 'phd:pub:' + p.id }, p));
 
     const conflicts = [];
